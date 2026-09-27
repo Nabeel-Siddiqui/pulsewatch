@@ -68,6 +68,13 @@ defmodule PulsewatchWeb.Router do
       on_mount: [{PulsewatchWeb.UserAuth, :ensure_authenticated}] do
       live "/users/settings", UserSettingsLive, :edit
       live "/users/settings/confirm_email/:token", UserSettingsLive, :confirm_email
+
+      live "/monitors", DashboardLive, :index
+      live "/monitors/new", DashboardLive, :new
+      live "/monitors/:id/edit", DashboardLive, :edit
+
+      live "/monitors/:id", MonitorLive.Show, :show
+      live "/monitors/:id/show/edit", MonitorLive.Show, :edit
     end
   end
 

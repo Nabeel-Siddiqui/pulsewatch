@@ -14,6 +14,105 @@ defmodule Pulsewatch.Monitoring do
   alias Pulsewatch.Monitoring.{Check, Incident, Monitor}
   alias Pulsewatch.Repo
 
+  ## PubSub
+  #
+  # Topic names are constructed only here, so publisher (the checking
+  # engine) and subscribers (LiveViews) can never drift out of sync on the
+  # topic string. Two topics per check: one scoped to the monitor (the
+  # detail page only cares about its own monitor) and one scoped to the
+  # user (the dashboard cares about all of a user's monitors, and must
+  # never receive another user's data).
+
+  @doc "Subscribes the calling process to updates for all of `user`'s monitors (dashboard)."
+  @spec subscribe_to_user_monitors(User.t()) :: :ok | {:error, term()}
+  def subscribe_to_user_monitors(%User{} = user) do
+    Phoenix.PubSub.subscribe(Pulsewatch.PubSub, user_topic(user.id))
+  end
+
+  @doc "Subscribes the calling process to updates for a single monitor (detail page)."
+  @spec subscribe_to_monitor(Monitor.t()) :: :ok | {:error, term()}
+  def subscribe_to_monitor(%Monitor{} = monitor) do
+    Phoenix.PubSub.subscribe(Pulsewatch.PubSub, monitor_topic(monitor.id))
+  end
+
+  @doc false
+  @spec broadcast(Monitor.t(), term()) :: :ok
+  def broadcast(%Monitor{} = monitor, message) do
+    Phoenix.PubSub.broadcast(Pulsewatch.PubSub, monitor_topic(monitor.id), message)
+    Phoenix.PubSub.broadcast(Pulsewatch.PubSub, user_topic(monitor.user_id), message)
+  end
+
+  defp user_topic(user_id), do: "user:#{user_id}:monitors"
+  defp monitor_topic(monitor_id), do: "monitor:#{monitor_id}"
+
+  @type dashboard_row :: %{
+          monitor: Monitor.t(),
+          status: :up | :down | nil,
+          last_response_time_ms: non_neg_integer() | nil,
+          last_checked_at: DateTime.t() | nil,
+          uptime_pct: float() | nil
+        }
+
+  @doc """
+  One row per monitor, each with its latest check status/response time
+  and its uptime percentage over the last 24h — computed with two
+  `LEFT LATERAL` joins in a single query, not one query per monitor (or
+  two: "latest check" and "24h uptime" are different row sets — a
+  monitor with no checks in the last 24h should still show its actual
+  last-known status, not go blank).
+  """
+  @spec dashboard_rows(User.t()) :: [dashboard_row()]
+  def dashboard_rows(%User{} = user) do
+    since = DateTime.add(DateTime.utc_now(), -24, :hour)
+
+    latest_check =
+      from c in Check,
+        where: c.monitor_id == parent_as(:monitor).id,
+        order_by: [desc: c.checked_at],
+        limit: 1,
+        select: %{
+          status: c.status,
+          response_time_ms: c.response_time_ms,
+          checked_at: c.checked_at
+        }
+
+    uptime_counts =
+      from c in Check,
+        where: c.monitor_id == parent_as(:monitor).id and c.checked_at >= ^since,
+        select: %{total: count(c.id), up: filter(count(c.id), c.status == :up)}
+
+    query =
+      from m in Monitor,
+        as: :monitor,
+        where: m.user_id == ^user.id,
+        left_lateral_join: latest in subquery(latest_check),
+        on: true,
+        left_lateral_join: uptime in subquery(uptime_counts),
+        on: true,
+        order_by: [asc: m.name],
+        select: %{monitor: m, latest: latest, uptime: uptime}
+
+    query
+    |> Repo.all()
+    |> Enum.map(&to_dashboard_row/1)
+  end
+
+  defp to_dashboard_row(%{monitor: monitor, latest: latest, uptime: uptime}) do
+    %{
+      monitor: monitor,
+      status: latest && latest.status,
+      last_response_time_ms: latest && latest.response_time_ms,
+      last_checked_at: latest && latest.checked_at,
+      uptime_pct: uptime_percentage(uptime)
+    }
+  end
+
+  defp uptime_percentage(%{total: total, up: up}) when is_integer(total) and total > 0 do
+    Float.round(up / total * 100, 1)
+  end
+
+  defp uptime_percentage(_uptime), do: nil
+
   ## Monitors
 
   @doc """
@@ -132,6 +231,21 @@ defmodule Pulsewatch.Monitoring do
     |> where([c], c.monitor_id == ^monitor.id)
     |> order_by([c], desc: c.checked_at)
     |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists a monitor's checks from the last `hours`, oldest first — the shape
+  the detail page's response-time chart wants (chronological, for a
+  time-series line).
+  """
+  @spec list_checks_since(Monitor.t(), pos_integer()) :: [Check.t()]
+  def list_checks_since(%Monitor{} = monitor, hours \\ 24) do
+    since = DateTime.add(DateTime.utc_now(), -hours, :hour)
+
+    Check
+    |> where([c], c.monitor_id == ^monitor.id and c.checked_at >= ^since)
+    |> order_by([c], asc: c.checked_at)
     |> Repo.all()
   end
 

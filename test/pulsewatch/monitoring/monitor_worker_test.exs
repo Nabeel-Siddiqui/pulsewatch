@@ -14,10 +14,23 @@ defmodule Pulsewatch.Monitoring.MonitorWorkerTest do
   # drive `:check` manually via `send/2` instead of waiting on a real
   # timer — deterministic and fast, and it exercises the exact same
   # handle_info/2 clause a real timer fires.
+  #
+  # Started unlinked (GenServer.start/3, not MonitorWorker.start_link/1 or
+  # start_supervised!) — this suite is about the worker's own state
+  # machine, not supervision, and one test deliberately kills a worker.
+  # start_link/1 links it to the test process, so killing it would
+  # propagate the :killed exit and take the test down too; start_supervised!
+  # goes through ExUnit's own test supervisor, which — since the worker's
+  # child spec says restart: :transient — would honor that policy and
+  # spawn a replacement that outlives the test, with its own pending
+  # jitter timer. Both were real leaked-process/crashed-test bugs this
+  # helper used to have. Restart-on-crash behavior is covered separately
+  # in MonitorSupervisorTest.
   defp start_worker!(monitor) do
-    pid = start_supervised!({MonitorWorker, monitor}, id: monitor.id)
+    {:ok, pid} = GenServer.start(MonitorWorker, monitor, name: MonitorWorker.via(monitor.id))
     allow(Pulsewatch.Monitoring.HttpClientMock, self(), pid)
     Sandbox.allow(Pulsewatch.Repo, self(), pid)
+    on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid, :normal) end)
     pid
   end
 

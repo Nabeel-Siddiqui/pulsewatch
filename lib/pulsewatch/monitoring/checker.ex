@@ -48,6 +48,7 @@ defmodule Pulsewatch.Monitoring.Checker do
 
     {new_failures, transition} = advance(status, consecutive_failures)
     apply_transition(monitor, transition)
+    Monitoring.broadcast(monitor, {:check_recorded, check})
 
     %{check: check, consecutive_failures: new_failures, transition: transition}
   end
@@ -101,8 +102,9 @@ defmodule Pulsewatch.Monitoring.Checker do
         :ok
 
       {:error, :not_found} ->
-        {:ok, _incident} = Monitoring.open_incident(monitor)
+        {:ok, incident} = Monitoring.open_incident(monitor)
         Logger.warning("monitor down", monitor_id: monitor.id, monitor_name: monitor.name)
+        Monitoring.broadcast(monitor, {:incident_opened, incident})
         :ok
     end
   end
@@ -110,8 +112,9 @@ defmodule Pulsewatch.Monitoring.Checker do
   defp apply_transition(monitor, :became_up) do
     case Monitoring.get_open_incident(monitor) do
       {:ok, incident} ->
-        {:ok, _incident} = Monitoring.resolve_incident(incident)
+        {:ok, resolved} = Monitoring.resolve_incident(incident)
         Logger.info("monitor recovered", monitor_id: monitor.id, monitor_name: monitor.name)
+        Monitoring.broadcast(monitor, {:incident_resolved, resolved})
         :ok
 
       {:error, :not_found} ->

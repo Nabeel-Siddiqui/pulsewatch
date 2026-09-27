@@ -35,7 +35,7 @@ defmodule Pulsewatch.Ai.IncidentSummaryWorker do
     checks = Monitoring.list_checks_during(monitor, incident.started_at, incident.resolved_at)
     prompt = PromptBuilder.build(monitor, incident, checks)
 
-    case llm_client().complete(prompt) do
+    case call_llm(prompt, incident.id) do
       {:ok, summary} ->
         {:ok, updated} = Monitoring.update_incident_summary(incident, summary)
         # Re-broadcast :incident_resolved with the now-summarized incident
@@ -53,6 +53,17 @@ defmodule Pulsewatch.Ai.IncidentSummaryWorker do
 
         :ok
     end
+  end
+
+  # Wrapped in a span (not just the raw client call) so LiveDashboard sees
+  # LLM latency/result regardless of which client implementation is
+  # configured — Anthropic, the demo client, or (in tests) the Mox mock.
+  defp call_llm(prompt, incident_id) do
+    :telemetry.span([:pulsewatch, :llm], %{incident_id: incident_id}, fn ->
+      result = llm_client().complete(prompt)
+      status = if match?({:ok, _}, result), do: :ok, else: :error
+      {result, %{incident_id: incident_id, result: status}}
+    end)
   end
 
   defp llm_client do

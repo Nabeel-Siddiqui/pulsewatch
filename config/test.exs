@@ -59,3 +59,7 @@ config :pulsewatch, :start_monitors_on_boot, false
 # a real queue. Tests trigger perform/1 explicitly via Oban.Testing's
 # perform_job/2,3 or assert on what got enqueued via assert_enqueued/1.
 config :pulsewatch, Oban, testing: :manual
+
+# A small, easy-to-exceed limit so rate-limit tests can actually trigger
+# a 429 with a handful of requests instead of sending 60 real ones.
+config :pulsewatch, :api_rate_limit, limit: 3, scale_ms: 60_000

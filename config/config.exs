@@ -77,6 +77,11 @@ config :phoenix, :json_library, Jason
 config :hammer,
   backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 4, cleanup_interval_ms: 60_000 * 10]}
 
+# JSON API rate limit, per token. Overridden in config/test.exs with a
+# much smaller window so tests can actually trigger a 429 without sending
+# 60 real requests.
+config :pulsewatch, :api_rate_limit, limit: 60, scale_ms: 60_000
+
 # The checking engine's HTTP client — swapped for a Mox mock in test.
 config :pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClient.ReqClient
 

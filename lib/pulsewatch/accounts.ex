@@ -6,7 +6,7 @@ defmodule Pulsewatch.Accounts do
   import Ecto.Query, warn: false
   alias Pulsewatch.Repo
 
-  alias Pulsewatch.Accounts.{User, UserNotifier, UserToken}
+  alias Pulsewatch.Accounts.{ApiToken, User, UserNotifier, UserToken}
 
   ## Database getters
 
@@ -350,4 +350,74 @@ defmodule Pulsewatch.Accounts do
       {:error, :user, changeset, _} -> {:error, changeset}
     end
   end
+
+  ## API tokens
+
+  @doc """
+  Creates a new API token for `user`. Returns the plaintext token
+  alongside the persisted record — the plaintext is only ever available
+  here; the caller must show it to the user immediately, since only its
+  hash is stored.
+  """
+  @spec create_api_token(User.t(), String.t()) ::
+          {:ok, String.t(), ApiToken.t()} | {:error, Ecto.Changeset.t()}
+  def create_api_token(%User{} = user, name) do
+    {token, changeset} = ApiToken.build(user, name)
+
+    case Repo.insert(changeset) do
+      {:ok, api_token} -> {:ok, token, api_token}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  @doc "Lists a user's API tokens, most recently created first. Never includes plaintext tokens — those only ever exist transiently, at creation."
+  @spec list_api_tokens(User.t()) :: [ApiToken.t()]
+  def list_api_tokens(%User{} = user) do
+    ApiToken
+    |> where([t], t.user_id == ^user.id)
+    # id as a tiebreaker: inserted_at has only second precision, so two
+    # tokens created within the same second would otherwise sort in an
+    # unspecified order (confirmed by a genuinely flaky test — id is
+    # monotonic and never ties, timestamps at this precision can).
+    |> order_by([t], desc: t.inserted_at, desc: t.id)
+    |> Repo.all()
+  end
+
+  @doc "Revokes (deletes) an API token. `user` must own it."
+  @spec revoke_api_token(User.t(), ApiToken.t()) :: {:ok, ApiToken.t()} | {:error, :not_found}
+  def revoke_api_token(%User{} = user, %ApiToken{user_id: user_id} = api_token)
+      when user.id == user_id do
+    Repo.delete(api_token)
+  end
+
+  def revoke_api_token(_user, %ApiToken{}), do: {:error, :not_found}
+
+  @doc """
+  Looks up the user and token record a plaintext API token belongs to,
+  and records that it was just used. Returns the token record too (not
+  just the user) so callers — namely the rate-limit plug — can key
+  per-token rather than per-user, matching "rate-limited per token" and
+  not "per account". `{:error, :invalid}` for a token that doesn't exist
+  — deliberately not distinguished from "malformed" or "expired", so a
+  caller can't learn anything about which tokens have ever existed.
+  """
+  @spec get_user_by_api_token(String.t()) :: {:ok, User.t(), ApiToken.t()} | {:error, :invalid}
+  def get_user_by_api_token(token) when is_binary(token) do
+    hash = ApiToken.hash(token)
+
+    ApiToken
+    |> where([t], t.token_hash == ^hash)
+    |> preload(:user)
+    |> Repo.one()
+    |> case do
+      nil ->
+        {:error, :invalid}
+
+      api_token ->
+        {:ok, touched} = api_token |> ApiToken.touch_changeset() |> Repo.update()
+        {:ok, api_token.user, touched}
+    end
+  end
+
+  def get_user_by_api_token(_token), do: {:error, :invalid}
 end

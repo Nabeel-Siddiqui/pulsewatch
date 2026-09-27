@@ -15,6 +15,12 @@ defmodule PulsewatchWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug OpenApiSpex.Plug.PutApiSpec, module: PulsewatchWeb.ApiSpec
+  end
+
+  pipeline :api_auth do
+    plug PulsewatchWeb.Plugs.ApiAuth
+    plug PulsewatchWeb.Plugs.RateLimit
   end
 
   scope "/", PulsewatchWeb do
@@ -23,10 +29,33 @@ defmodule PulsewatchWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", PulsewatchWeb do
-  #   pipe_through :api
-  # end
+  scope "/", PulsewatchWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :show
+  end
+
+  # No PulsewatchWeb module prefix here on purpose — these two plugs are
+  # OpenApiSpex's own, not ours, and a scope with a module alias silently
+  # prefixes *every* bare module name in it (a real gotcha: this
+  # originally resolved to the nonexistent
+  # PulsewatchWeb.OpenApiSpex.Plug.RenderSpec instead of
+  # OpenApiSpex.Plug.RenderSpec).
+  scope "/api" do
+    pipe_through :api
+
+    get "/openapi", OpenApiSpex.Plug.RenderSpec, []
+    get "/swaggerui", OpenApiSpex.Plug.SwaggerUI, path: "/api/openapi"
+  end
+
+  scope "/api/v1", PulsewatchWeb.Api.V1 do
+    pipe_through [:api, :api_auth]
+
+    get "/monitors", MonitorController, :index
+    get "/monitors/:id", MonitorController, :show
+    get "/monitors/:id/checks", MonitorController, :checks
+    get "/monitors/:id/incidents", MonitorController, :incidents
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:pulsewatch, :dev_routes) do
@@ -68,6 +97,7 @@ defmodule PulsewatchWeb.Router do
       on_mount: [{PulsewatchWeb.UserAuth, :ensure_authenticated}] do
       live "/users/settings", UserSettingsLive, :edit
       live "/users/settings/confirm_email/:token", UserSettingsLive, :confirm_email
+      live "/settings/api_tokens", ApiTokenLive, :index
 
       live "/monitors", DashboardLive, :index
       live "/monitors/new", DashboardLive, :new

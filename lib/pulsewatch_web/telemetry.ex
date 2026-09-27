@@ -78,7 +78,33 @@ defmodule PulsewatchWeb.Telemetry do
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
       summary("vm.total_run_queue_lengths.total"),
       summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.total_run_queue_lengths.io")
+      summary("vm.total_run_queue_lengths.io"),
+
+      # Checking engine, alerting, and AI summary metrics — see
+      # Pulsewatch.Monitoring.Checker, Pulsewatch.Alerts.IncidentAlertWorker,
+      # and Pulsewatch.Ai.IncidentSummaryWorker for where these are emitted.
+      summary("pulsewatch.monitor.check.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:status],
+        description: "Duration of a single monitor check, by result (:up/:down)"
+      ),
+      counter("pulsewatch.monitor.check.stop.count",
+        tags: [:status],
+        description: "Number of monitor checks performed, by result"
+      ),
+      counter("pulsewatch.alert.sent.count",
+        tags: [:channel, :result],
+        description: "Alert notifications sent, by channel (:email/:webhook) and result"
+      ),
+      summary("pulsewatch.llm.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:result],
+        description: "Duration of an LLM call for an incident summary"
+      ),
+      counter("pulsewatch.llm.stop.count",
+        tags: [:result],
+        description: "LLM calls made for incident summaries, by result"
+      )
     ]
   end
 

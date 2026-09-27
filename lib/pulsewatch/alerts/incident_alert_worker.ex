@@ -42,19 +42,23 @@ defmodule Pulsewatch.Alerts.IncidentAlertWorker do
   end
 
   defp deliver_email(user, monitor, incident, event) do
-    case IncidentMailer.deliver_incident_email(user, monitor, incident, event) do
-      {:ok, _metadata} ->
-        :ok
+    result =
+      case IncidentMailer.deliver_incident_email(user, monitor, incident, event) do
+        {:ok, _metadata} ->
+          :ok
 
-      {:error, reason} ->
-        Logger.error("failed to send incident email",
-          incident_id: incident.id,
-          monitor_id: monitor.id,
-          reason: inspect(reason)
-        )
+        {:error, reason} ->
+          Logger.error("failed to send incident email",
+            incident_id: incident.id,
+            monitor_id: monitor.id,
+            reason: inspect(reason)
+          )
 
-        :ok
-    end
+          :error
+      end
+
+    emit_alert_sent(:email, result, incident, monitor)
+    :ok
   end
 
   defp deliver_webhook(%{webhook_url: nil}, _incident, _event), do: :ok
@@ -73,6 +77,7 @@ defmodule Pulsewatch.Alerts.IncidentAlertWorker do
 
     case webhook_client().post(monitor.webhook_url, payload) do
       {:ok, _status} ->
+        emit_alert_sent(:webhook, :ok, incident, monitor)
         :ok
 
       {:error, reason} ->
@@ -82,8 +87,17 @@ defmodule Pulsewatch.Alerts.IncidentAlertWorker do
           reason: inspect(reason)
         )
 
+        emit_alert_sent(:webhook, :error, incident, monitor)
         {:error, reason}
     end
+  end
+
+  defp emit_alert_sent(channel, result, incident, monitor) do
+    :telemetry.execute(
+      [:pulsewatch, :alert, :sent],
+      %{count: 1},
+      %{channel: channel, result: result, incident_id: incident.id, monitor_id: monitor.id}
+    )
   end
 
   defp webhook_client do

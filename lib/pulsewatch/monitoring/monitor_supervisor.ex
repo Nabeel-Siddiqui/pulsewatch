@@ -59,6 +59,13 @@ defmodule Pulsewatch.Monitoring.MonitorSupervisor do
     |> Enum.each(&start_worker/1)
   end
 
+  @doc "The number of monitor workers currently running. Used by the /health endpoint."
+  @spec worker_count() :: non_neg_integer()
+  def worker_count do
+    %{active: count} = DynamicSupervisor.count_children(__MODULE__)
+    count
+  end
+
   defp supervisor_terminate(pid) do
     case DynamicSupervisor.terminate_child(__MODULE__, pid) do
       :ok -> :ok

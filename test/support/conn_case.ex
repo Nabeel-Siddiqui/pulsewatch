@@ -61,4 +61,26 @@ defmodule PulsewatchWeb.ConnCase do
     |> Phoenix.ConnTest.init_test_session(%{})
     |> Plug.Conn.put_session(:user_token, token)
   end
+
+  @doc """
+  Setup helper for the JSON API: registers a user, creates an API token
+  for them, and sets the bearer `Authorization` header on `conn`.
+
+      setup :register_user_with_api_token
+
+  Stores the updated `conn`, the `user`, and the plaintext `token` in the
+  test context (the token is occasionally useful directly, e.g. to build
+  a *second*, differently-authenticated conn in the same test).
+  """
+  def register_user_with_api_token(%{conn: conn}) do
+    user = Pulsewatch.AccountsFixtures.user_fixture()
+    {:ok, token, _api_token} = Pulsewatch.Accounts.create_api_token(user, "test token")
+
+    %{conn: put_api_token(conn, token), user: user, token: token}
+  end
+
+  @doc "Sets the bearer `Authorization` header on `conn` to `token`."
+  def put_api_token(conn, token) do
+    Plug.Conn.put_req_header(conn, "authorization", "Bearer #{token}")
+  end
 end

@@ -29,6 +29,11 @@ defmodule Pulsewatch.Monitoring.Checker do
 
   Returns the new consecutive-failure count and what happened, so the
   caller (the worker) can log/track it without duplicating this logic.
+
+  Emits `[:pulsewatch, :monitor, :check, :start | :stop | :exception]` (a
+  `:telemetry.span/3`) covering the whole check — HTTP request plus the DB
+  writes — tagged with the resulting status, so LiveDashboard can chart
+  both check volume and latency broken down by up/down.
   """
   @spec run(Monitor.t(), non_neg_integer()) :: %{
           check: Check.t(),
@@ -36,6 +41,13 @@ defmodule Pulsewatch.Monitoring.Checker do
           transition: transition()
         }
   def run(%Monitor{} = monitor, consecutive_failures) do
+    :telemetry.span([:pulsewatch, :monitor, :check], %{monitor_id: monitor.id}, fn ->
+      result = do_run(monitor, consecutive_failures)
+      {result, %{monitor_id: monitor.id, status: result.check.status}}
+    end)
+  end
+
+  defp do_run(monitor, consecutive_failures) do
     {status, response_time_ms, status_code, error_message} = perform_request(monitor)
 
     {:ok, check} =

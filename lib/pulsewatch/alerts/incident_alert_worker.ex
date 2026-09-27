@@ -12,13 +12,19 @@ defmodule Pulsewatch.Alerts.IncidentAlertWorker do
 
   `unique` is keyed on `incident_id` + `event`, for the life of the job
   table (`period: :infinity`) — the same incident transition should never
-  produce two alert jobs, however it got triggered.
+  produce two alert jobs, however it got triggered. `:worker` has to stay
+  in `fields` alongside `:args` — Oban's uniqueness check compares
+  exactly the fields you list, and dropping `:worker` (the default
+  includes it) means it happily matches *any* job of *any* worker whose
+  args contain a matching `incident_id`, e.g. this app's own
+  `Ai.IncidentSummaryWorker` — a real bug caught while testing that both
+  jobs land when an incident resolves.
   """
 
   use Oban.Worker,
     queue: :alerts,
     max_attempts: 5,
-    unique: [fields: [:args], keys: [:incident_id, :event], period: :infinity]
+    unique: [fields: [:args, :worker], keys: [:incident_id, :event], period: :infinity]
 
   require Logger
 

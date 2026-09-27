@@ -261,6 +261,19 @@ defmodule Pulsewatch.Monitoring do
     count
   end
 
+  @doc """
+  Lists a monitor's checks between `from` and `to` (inclusive), oldest
+  first — the incident-summary worker's view of "what happened during
+  this outage."
+  """
+  @spec list_checks_during(Monitor.t(), DateTime.t(), DateTime.t()) :: [Check.t()]
+  def list_checks_during(%Monitor{} = monitor, %DateTime{} = from, %DateTime{} = to) do
+    Check
+    |> where([c], c.monitor_id == ^monitor.id and c.checked_at >= ^from and c.checked_at <= ^to)
+    |> order_by([c], asc: c.checked_at)
+    |> Repo.all()
+  end
+
   ## Incidents
 
   @doc "Fetches an incident by id, with its monitor and the monitor's owning user preloaded. Not user-scoped — for system code (the alert worker), not the web layer."
@@ -336,6 +349,21 @@ defmodule Pulsewatch.Monitoring do
       Incident.resolve_changeset(incident, %{resolved_at: resolved_at, ai_summary: ai_summary})
 
     Ecto.Multi.new() |> Ecto.Multi.update(:incident, changeset)
+  end
+
+  @doc """
+  Attaches an AI-generated summary to an already-resolved incident.
+  Separate from `resolve_incident/3` because the summary is generated
+  asynchronously, well after resolution — by the AI summary worker,
+  which may finish seconds (or never, if the LLM call fails) after the
+  incident itself resolved.
+  """
+  @spec update_incident_summary(Incident.t(), String.t()) ::
+          {:ok, Incident.t()} | {:error, Ecto.Changeset.t()}
+  def update_incident_summary(%Incident{} = incident, ai_summary) when is_binary(ai_summary) do
+    incident
+    |> Incident.summary_changeset(%{ai_summary: ai_summary})
+    |> Repo.update()
   end
 
   @doc "Lists a monitor's incidents, most recently started first."

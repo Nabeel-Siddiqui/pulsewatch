@@ -35,4 +35,11 @@ defmodule Pulsewatch.Monitoring.Incident do
     |> cast(attrs, [:resolved_at, :ai_summary])
     |> validate_required([:resolved_at])
   end
+
+  @doc "Changeset for attaching an AI-generated summary after the fact — see Monitoring.update_incident_summary/2."
+  def summary_changeset(incident, attrs) do
+    incident
+    |> cast(attrs, [:ai_summary])
+    |> validate_required([:ai_summary])
+  end
 end

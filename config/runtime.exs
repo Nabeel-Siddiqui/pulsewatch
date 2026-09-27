@@ -20,6 +20,25 @@ if System.get_env("PHX_SERVER") do
   config :pulsewatch, PulsewatchWeb.Endpoint, server: true
 end
 
+# LLM client for AI incident summaries — runs in every env but :test
+# (which always uses the Mox mock, configured in config/test.exs). With
+# no ANTHROPIC_API_KEY set, falls back to the demo client automatically,
+# so a fresh clone (or a public demo deployment) works without ever
+# needing a real key — summaries just come from a canned set of
+# plausible-sounding outage descriptions instead of a real model.
+if config_env() != :test do
+  config :pulsewatch, :llm_model, System.get_env("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+
+  case System.get_env("ANTHROPIC_API_KEY") do
+    nil ->
+      config :pulsewatch, :llm_client, Pulsewatch.Ai.LlmClient.DemoClient
+
+    api_key ->
+      config :pulsewatch, :llm_client, Pulsewatch.Ai.LlmClient.AnthropicClient
+      config :pulsewatch, :anthropic_api_key, api_key
+  end
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

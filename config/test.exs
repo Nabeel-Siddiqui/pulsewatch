@@ -46,6 +46,10 @@ config :pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClientMock
 # Same story for the alert worker's webhook client.
 config :pulsewatch, :webhook_client, Pulsewatch.Alerts.WebhookClientMock
 
+# ...and the AI summary worker's LLM client. Never a real call to
+# Anthropic (or anywhere) in the suite.
+config :pulsewatch, :llm_client, Pulsewatch.Ai.LlmClientMock
+
 # See Pulsewatch.Application for why: booting workers at application
 # start requires a DB connection the SQL Sandbox hasn't granted yet.
 config :pulsewatch, :start_monitors_on_boot, false

@@ -3,6 +3,7 @@ defmodule Pulsewatch.AlertsTest do
 
   import Pulsewatch.MonitoringFixtures
 
+  alias Pulsewatch.Ai.IncidentSummaryWorker
   alias Pulsewatch.Alerts
   alias Pulsewatch.Alerts.IncidentAlertWorker
   alias Pulsewatch.Monitoring
@@ -36,7 +37,7 @@ defmodule Pulsewatch.AlertsTest do
   end
 
   describe "resolve_incident/3" do
-    test "updates the incident and enqueues its alert job in the same transaction" do
+    test "updates the incident and enqueues both its alert and summary jobs in the same transaction" do
       monitor = monitor_fixture()
       {:ok, incident} = Monitoring.open_incident(monitor)
 
@@ -47,6 +48,45 @@ defmodule Pulsewatch.AlertsTest do
         worker: IncidentAlertWorker,
         args: %{incident_id: incident.id, event: "resolved"}
       )
+
+      assert_enqueued(worker: IncidentSummaryWorker, args: %{incident_id: incident.id})
+    end
+
+    test "the resolve alert job is scheduled a few seconds out, giving the summary job a head start" do
+      monitor = monitor_fixture()
+      {:ok, incident} = Monitoring.open_incident(monitor)
+
+      {:ok, _resolved} = Alerts.resolve_incident(incident)
+
+      [job] =
+        all_enqueued(
+          worker: IncidentAlertWorker,
+          args: %{incident_id: incident.id, event: "resolved"}
+        )
+
+      assert job.state == "scheduled"
+      assert DateTime.compare(job.scheduled_at, DateTime.utc_now()) == :gt
+    end
+
+    test "the opened alert job runs immediately, not scheduled" do
+      monitor = monitor_fixture()
+      {:ok, _incident} = Alerts.open_incident(monitor)
+
+      assert [job] = all_enqueued(worker: IncidentAlertWorker)
+      assert job.state == "available"
+    end
+
+    test "if the incident update fails, neither job is enqueued" do
+      monitor = monitor_fixture()
+      {:ok, incident} = Monitoring.open_incident(monitor)
+      {:ok, incident} = Monitoring.resolve_incident(incident)
+
+      # Already resolved — resolved_at is required but the changeset
+      # itself would still succeed on a re-resolve; force a failure by
+      # passing a nil resolved_at instead.
+      assert {:error, _changeset} = Alerts.resolve_incident(incident, nil)
+
+      assert all_enqueued(worker: IncidentSummaryWorker) == []
     end
 
     test "carries an AI summary through to the job's underlying incident record" do

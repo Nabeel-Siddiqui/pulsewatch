@@ -53,10 +53,12 @@ config :tailwind,
     cd: Path.expand("../assets", __DIR__)
   ]
 
-# Configures Elixir's Logger
+# Configures Elixir's Logger. monitor_id/monitor_name are set by the
+# checking engine (MonitorWorker, Checker) so every log line from a check
+# is traceable back to the monitor it came from.
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  metadata: [:request_id, :monitor_id, :monitor_name]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
@@ -65,6 +67,11 @@ config :phoenix, :json_library, Jason
 # backend needs config to boot even before anything calls it.
 config :hammer,
   backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 4, cleanup_interval_ms: 60_000 * 10]}
+
+# The checking engine's HTTP client — swapped for a Mox mock in test.
+config :pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClient.ReqClient
+
+config :pulsewatch, :start_monitors_on_boot, true
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

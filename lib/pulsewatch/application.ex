@@ -5,6 +5,8 @@ defmodule Pulsewatch.Application do
 
   use Application
 
+  alias Pulsewatch.Monitoring.MonitorSupervisor
+
   @impl true
   def start(_type, _args) do
     children = [
@@ -14,8 +16,12 @@ defmodule Pulsewatch.Application do
       {Phoenix.PubSub, name: Pulsewatch.PubSub},
       # Start the Finch HTTP client for sending emails
       {Finch, name: Pulsewatch.Finch},
-      # Start a worker by calling: Pulsewatch.Worker.start_link(arg)
-      # {Pulsewatch.Worker, arg},
+      # The checking engine: one Registry entry + DynamicSupervisor child
+      # per active monitor. A crash in one MonitorWorker only restarts
+      # that worker (DynamicSupervisor's default :one_for_one strategy) —
+      # it can't take down or affect any other monitor's worker.
+      {Registry, keys: :unique, name: Pulsewatch.Monitoring.Registry},
+      MonitorSupervisor,
       # Start to serve requests, typically the last entry
       PulsewatchWeb.Endpoint
     ]
@@ -23,7 +29,23 @@ defmodule Pulsewatch.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Pulsewatch.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, pid} <- Supervisor.start_link(children, opts) do
+      maybe_start_monitors()
+      {:ok, pid}
+    end
+  end
+
+  # Off in :test — the test DB uses Ecto's SQL Sandbox, which requires a
+  # test to explicitly check out a connection before any query can run.
+  # A query fired here, at application boot before any test has started,
+  # would raise DBConnection.OwnershipError. Individual tests call
+  # MonitorSupervisor.start_all_active_monitors/0 directly instead, inside
+  # their own sandboxed connection.
+  defp maybe_start_monitors do
+    if Application.get_env(:pulsewatch, :start_monitors_on_boot, true) do
+      MonitorSupervisor.start_all_active_monitors()
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

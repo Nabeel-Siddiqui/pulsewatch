@@ -16,6 +16,18 @@ defmodule Pulsewatch.Monitoring do
 
   ## Monitors
 
+  @doc """
+  Lists every active monitor, across all users. Not user-scoped —
+  intentionally not called from the web layer, only used to boot the
+  checking engine's workers on application start (and after a crash).
+  """
+  @spec list_active_monitors() :: [Monitor.t()]
+  def list_active_monitors do
+    Monitor
+    |> where([m], m.active == true)
+    |> Repo.all()
+  end
+
   @doc "Lists a user's monitors, alphabetically by name."
   @spec list_monitors(User.t()) :: [Monitor.t()]
   def list_monitors(%User{} = user) do

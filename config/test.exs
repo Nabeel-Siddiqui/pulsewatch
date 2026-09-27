@@ -38,3 +38,11 @@ config :phoenix, :plug_init_mode, :runtime
 # Enable helpful, but potentially expensive runtime checks
 config :phoenix_live_view,
   enable_expensive_runtime_checks: true
+
+# The checking engine's HTTP client is Mox-mocked in tests — nothing in
+# the suite ever makes a real network call for a monitor check.
+config :pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClientMock
+
+# See Pulsewatch.Application for why: booting workers at application
+# start requires a DB connection the SQL Sandbox hasn't granted yet.
+config :pulsewatch, :start_monitors_on_boot, false

@@ -54,11 +54,20 @@ config :tailwind,
   ]
 
 # Configures Elixir's Logger. monitor_id/monitor_name are set by the
-# checking engine (MonitorWorker, Checker) so every log line from a check
-# is traceable back to the monitor it came from.
+# checking engine (MonitorWorker, Checker); incident_id/count/
+# retention_days/reason by the alerting and retention Oban workers — so
+# every log line is traceable back to what it's actually about.
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :monitor_id, :monitor_name]
+  metadata: [
+    :request_id,
+    :monitor_id,
+    :monitor_name,
+    :incident_id,
+    :reason,
+    :count,
+    :retention_days
+  ]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
@@ -71,7 +80,25 @@ config :hammer,
 # The checking engine's HTTP client — swapped for a Mox mock in test.
 config :pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClient.ReqClient
 
+# The alert worker's webhook client — swapped for a Mox mock in test.
+config :pulsewatch, :webhook_client, Pulsewatch.Alerts.WebhookClient.ReqClient
+
 config :pulsewatch, :start_monitors_on_boot, true
+
+config :pulsewatch, Oban,
+  engine: Oban.Engines.Basic,
+  repo: Pulsewatch.Repo,
+  queues: [alerts: 10, maintenance: 1],
+  plugins: [
+    # Deletes checks older than 30 days, nightly at 03:00 UTC.
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"0 3 * * *", Pulsewatch.Monitoring.PruneChecksWorker}
+     ]},
+    # Prunes Oban's own completed/cancelled job rows so oban_jobs doesn't
+    # grow forever either.
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7}
+  ]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

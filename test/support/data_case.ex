@@ -26,6 +26,8 @@ defmodule Pulsewatch.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Pulsewatch.DataCase
+
+      use Oban.Testing, repo: Pulsewatch.Repo
     end
   end
 

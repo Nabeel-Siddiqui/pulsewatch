@@ -13,6 +13,7 @@ defmodule Pulsewatch.Monitoring.Checker do
 
   require Logger
 
+  alias Pulsewatch.Alerts
   alias Pulsewatch.Monitoring
   alias Pulsewatch.Monitoring.{Check, Monitor}
 
@@ -102,7 +103,7 @@ defmodule Pulsewatch.Monitoring.Checker do
         :ok
 
       {:error, :not_found} ->
-        {:ok, incident} = Monitoring.open_incident(monitor)
+        {:ok, incident} = Alerts.open_incident(monitor)
         Logger.warning("monitor down", monitor_id: monitor.id, monitor_name: monitor.name)
         Monitoring.broadcast(monitor, {:incident_opened, incident})
         :ok
@@ -112,7 +113,7 @@ defmodule Pulsewatch.Monitoring.Checker do
   defp apply_transition(monitor, :became_up) do
     case Monitoring.get_open_incident(monitor) do
       {:ok, incident} ->
-        {:ok, resolved} = Monitoring.resolve_incident(incident)
+        {:ok, resolved} = Alerts.resolve_incident(incident)
         Logger.info("monitor recovered", monitor_id: monitor.id, monitor_name: monitor.name)
         Monitoring.broadcast(monitor, {:incident_resolved, resolved})
         :ok

@@ -16,6 +16,7 @@ defmodule Pulsewatch.Application do
       {Phoenix.PubSub, name: Pulsewatch.PubSub},
       # Start the Finch HTTP client for sending emails
       {Finch, name: Pulsewatch.Finch},
+      {Oban, Application.fetch_env!(:pulsewatch, Oban)},
       # The checking engine: one Registry entry + DynamicSupervisor child
       # per active monitor. A crash in one MonitorWorker only restarts
       # that worker (DynamicSupervisor's default :one_for_one strategy) —

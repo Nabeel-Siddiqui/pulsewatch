@@ -5,8 +5,18 @@ defmodule PulsewatchWeb.MonitorLive.ShowTest do
   import Pulsewatch.MonitoringFixtures
 
   alias Pulsewatch.Monitoring
+  alias Pulsewatch.Monitoring.MonitorSupervisor
 
   setup :register_and_log_in_user
+
+  # See the identical setup block in DashboardLiveTest for why: edits and
+  # resumes here go through Engine, which starts a real worker on the
+  # application's global (not per-test) MonitorSupervisor.
+  setup %{user: user} do
+    on_exit(fn ->
+      user |> Monitoring.list_monitors() |> Enum.each(&MonitorSupervisor.stop_worker(&1.id))
+    end)
+  end
 
   test "shows monitor details, chart canvas, incidents, and recent checks", %{
     conn: conn,

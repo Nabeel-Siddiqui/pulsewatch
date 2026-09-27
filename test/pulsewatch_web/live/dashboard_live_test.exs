@@ -5,8 +5,22 @@ defmodule PulsewatchWeb.DashboardLiveTest do
   import Pulsewatch.MonitoringFixtures
 
   alias Pulsewatch.Monitoring
+  alias Pulsewatch.Monitoring.MonitorSupervisor
 
   setup :register_and_log_in_user
+
+  # Several tests here go through Engine (create/edit/resume), which
+  # starts a real worker on the application's global MonitorSupervisor —
+  # not something these tests get their own copy of. Left running, a
+  # worker's pending jitter-delayed :check can fire minutes later, mid a
+  # different test, and crash on an unmocked Mox call. Query fresh at
+  # exit (not a snapshot) so it catches every monitor the test touched,
+  # regardless of which action started a worker.
+  setup %{user: user} do
+    on_exit(fn ->
+      user |> Monitoring.list_monitors() |> Enum.each(&MonitorSupervisor.stop_worker(&1.id))
+    end)
+  end
 
   defp valid_attrs do
     %{

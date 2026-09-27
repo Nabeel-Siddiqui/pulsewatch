@@ -249,7 +249,27 @@ defmodule Pulsewatch.Monitoring do
     |> Repo.all()
   end
 
+  @doc """
+  Deletes checks older than `days`. Returns the number of rows deleted.
+  Used by the nightly retention Oban job — not exposed to the web layer.
+  """
+  @spec delete_checks_older_than(pos_integer()) :: non_neg_integer()
+  def delete_checks_older_than(days) do
+    cutoff = DateTime.add(DateTime.utc_now(), -days, :day)
+
+    {count, nil} = Repo.delete_all(where(Check, [c], c.checked_at < ^cutoff))
+    count
+  end
+
   ## Incidents
+
+  @doc "Fetches an incident by id, with its monitor and the monitor's owning user preloaded. Not user-scoped — for system code (the alert worker), not the web layer."
+  @spec get_incident!(term()) :: Incident.t()
+  def get_incident!(id) do
+    Incident
+    |> Repo.get!(id)
+    |> Repo.preload(monitor: :user)
+  end
 
   @doc "Fetches a monitor's currently-open incident, if any."
   @spec get_open_incident(Monitor.t()) :: {:ok, Incident.t()} | {:error, :not_found}
@@ -277,6 +297,21 @@ defmodule Pulsewatch.Monitoring do
     |> Repo.insert()
   end
 
+  @doc """
+  Same as `open_incident/2`, but returns an unrun `Ecto.Multi` (named step
+  `:incident`) instead of inserting directly — lets a caller (`Alerts`)
+  compose the incident insert and an Oban job insert into one transaction,
+  so an incident is never recorded without its alert being queued, or
+  vice versa.
+  """
+  @spec open_incident_multi(Monitor.t(), DateTime.t()) :: Ecto.Multi.t()
+  def open_incident_multi(%Monitor{} = monitor, started_at \\ DateTime.utc_now()) do
+    changeset =
+      Incident.open_changeset(%Incident{monitor_id: monitor.id}, %{started_at: started_at})
+
+    Ecto.Multi.new() |> Ecto.Multi.insert(:incident, changeset)
+  end
+
   @doc "Resolves an open incident, optionally attaching an AI-generated summary."
   @spec resolve_incident(Incident.t(), DateTime.t(), String.t() | nil) ::
           {:ok, Incident.t()} | {:error, Ecto.Changeset.t()}
@@ -288,6 +323,19 @@ defmodule Pulsewatch.Monitoring do
     incident
     |> Incident.resolve_changeset(%{resolved_at: resolved_at, ai_summary: ai_summary})
     |> Repo.update()
+  end
+
+  @doc "Same as `resolve_incident/3`, but returns an unrun `Ecto.Multi` — see `open_incident_multi/2`."
+  @spec resolve_incident_multi(Incident.t(), DateTime.t(), String.t() | nil) :: Ecto.Multi.t()
+  def resolve_incident_multi(
+        %Incident{} = incident,
+        resolved_at \\ DateTime.utc_now(),
+        ai_summary \\ nil
+      ) do
+    changeset =
+      Incident.resolve_changeset(incident, %{resolved_at: resolved_at, ai_summary: ai_summary})
+
+    Ecto.Multi.new() |> Ecto.Multi.update(:incident, changeset)
   end
 
   @doc "Lists a monitor's incidents, most recently started first."

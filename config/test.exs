@@ -43,6 +43,15 @@ config :phoenix_live_view,
 # the suite ever makes a real network call for a monitor check.
 config :pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClientMock
 
+# Same story for the alert worker's webhook client.
+config :pulsewatch, :webhook_client, Pulsewatch.Alerts.WebhookClientMock
+
 # See Pulsewatch.Application for why: booting workers at application
 # start requires a DB connection the SQL Sandbox hasn't granted yet.
 config :pulsewatch, :start_monitors_on_boot, false
+
+# Oban.Testing's :manual mode — jobs are inserted into the database (so
+# uniqueness/scheduling logic still runs for real) but never picked up by
+# a real queue. Tests trigger perform/1 explicitly via Oban.Testing's
+# perform_job/2,3 or assert on what got enqueued via assert_enqueued/1.
+config :pulsewatch, Oban, testing: :manual

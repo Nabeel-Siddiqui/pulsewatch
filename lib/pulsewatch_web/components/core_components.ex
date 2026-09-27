@@ -18,7 +18,7 @@ defmodule PulsewatchWeb.CoreComponents do
 
   alias Phoenix.HTML.Form
   alias Phoenix.LiveView.JS
-  import PulsewatchWeb.Gettext
+  use Gettext, backend: PulsewatchWeb.Gettext
 
   @doc """
   Renders a modal.

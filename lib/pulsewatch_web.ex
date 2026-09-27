@@ -43,7 +43,7 @@ defmodule PulsewatchWeb do
         layouts: [html: PulsewatchWeb.Layouts]
 
       import Plug.Conn
-      import PulsewatchWeb.Gettext
+      use Gettext, backend: PulsewatchWeb.Gettext
 
       unquote(verified_routes())
     end
@@ -85,7 +85,7 @@ defmodule PulsewatchWeb do
       import Phoenix.HTML
       # Core UI components and translation
       import PulsewatchWeb.CoreComponents
-      import PulsewatchWeb.Gettext
+      use Gettext, backend: PulsewatchWeb.Gettext
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS

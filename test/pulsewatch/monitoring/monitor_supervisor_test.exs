@@ -3,7 +3,7 @@ defmodule Pulsewatch.Monitoring.MonitorSupervisorTest do
 
   import Pulsewatch.MonitoringFixtures
 
-  alias Pulsewatch.Monitoring.MonitorSupervisor
+  alias Pulsewatch.Monitoring.{MonitorSupervisor, NodeLock}
 
   # None of these tests wait long enough for a worker's first check to
   # fire (it's scheduled 0-5s out with jitter) — they're only exercising
@@ -91,6 +91,18 @@ defmodule Pulsewatch.Monitoring.MonitorSupervisorTest do
 
     assert Process.alive?(pid_b)
     assert [{^pid_b, _}] = Registry.lookup(Pulsewatch.Monitoring.Registry, monitor_b.id)
+  end
+
+  test "does not start a worker locally when another node already owns the monitor's lock" do
+    monitor = monitor_fixture()
+    {:ok, other_node} = NodeLock.start_link(name: nil)
+    true = NodeLock.try_lock(monitor.id, other_node)
+
+    :ok = MonitorSupervisor.start_worker(monitor)
+
+    refute registered?(monitor.id)
+
+    NodeLock.unlock(monitor.id, other_node)
   end
 
   test "start_all_active_monitors/0 starts a worker per active monitor and skips paused ones" do

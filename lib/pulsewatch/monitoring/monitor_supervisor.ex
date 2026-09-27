@@ -12,7 +12,7 @@ defmodule Pulsewatch.Monitoring.MonitorSupervisor do
   use DynamicSupervisor
 
   alias Pulsewatch.Monitoring
-  alias Pulsewatch.Monitoring.{Monitor, MonitorWorker}
+  alias Pulsewatch.Monitoring.{Monitor, MonitorWorker, NodeLock}
 
   @spec start_link(term()) :: Supervisor.on_start()
   def start_link(init_arg) do
@@ -24,21 +24,39 @@ defmodule Pulsewatch.Monitoring.MonitorSupervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  @doc "Starts a worker for `monitor`, unless one is already running."
+  @doc """
+  Starts a worker for `monitor` on this node, unless one is already
+  running locally or another node already owns it (see `NodeLock`).
+  """
   @spec start_worker(Monitor.t()) :: :ok
   def start_worker(%Monitor{} = monitor) do
-    case DynamicSupervisor.start_child(__MODULE__, {MonitorWorker, monitor}) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
+    case Registry.lookup(Pulsewatch.Monitoring.Registry, monitor.id) do
+      [{_pid, _value}] -> :ok
+      [] -> claim_and_start(monitor)
     end
   end
 
-  @doc "Stops the running worker for `monitor_id`, if any."
+  defp claim_and_start(monitor) do
+    if NodeLock.try_lock(monitor.id) do
+      case DynamicSupervisor.start_child(__MODULE__, {MonitorWorker, monitor}) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  @doc "Stops the running worker for `monitor_id` on this node, if any, and releases its lock."
   @spec stop_worker(term()) :: :ok
   def stop_worker(monitor_id) do
     case Registry.lookup(Pulsewatch.Monitoring.Registry, monitor_id) do
-      [{pid, _value}] -> :ok = supervisor_terminate(pid)
-      [] -> :ok
+      [{pid, _value}] ->
+        :ok = supervisor_terminate(pid)
+        NodeLock.unlock(monitor_id)
+
+      [] ->
+        :ok
     end
   end
 

@@ -22,6 +22,10 @@ defmodule Pulsewatch.Application do
       # that worker (DynamicSupervisor's default :one_for_one strategy) —
       # it can't take down or affect any other monitor's worker.
       {Registry, keys: :unique, name: Pulsewatch.Monitoring.Registry},
+      # Cluster-wide (Postgres-advisory-lock-backed) claim on which node
+      # runs which monitor's worker — see its moduledoc for why this
+      # exists and why it's advisory locks rather than Horde.
+      Pulsewatch.Monitoring.NodeLock,
       MonitorSupervisor,
       # Start to serve requests, typically the last entry
       PulsewatchWeb.Endpoint

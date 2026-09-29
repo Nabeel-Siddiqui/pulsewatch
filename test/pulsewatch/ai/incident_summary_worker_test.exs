@@ -66,9 +66,15 @@ defmodule Pulsewatch.Ai.IncidentSummaryWorkerTest do
         checked_at: DateTime.add(incident.resolved_at, 60, :second)
       })
 
+    # Checked by timestamp, not id — the prompt never renders a check's
+    # id (see PromptBuilder), so asserting against inspect(check.id) was
+    # really just asserting those digits don't appear anywhere in the
+    # prompt, which occasionally collides with digits inside an
+    # unrelated timestamp or response time and fails the test on data it
+    # was never meant to depend on.
     expect(Pulsewatch.Ai.LlmClientMock, :complete, fn prompt ->
-      refute prompt =~ inspect(before_check.id)
-      refute prompt =~ inspect(after_check.id)
+      refute prompt =~ Calendar.strftime(before_check.checked_at, "%H:%M:%S")
+      refute prompt =~ Calendar.strftime(after_check.checked_at, "%H:%M:%S")
       assert prompt =~ Calendar.strftime(during_check.checked_at, "%H:%M:%S")
       {:ok, "summary"}
     end)

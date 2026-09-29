@@ -21,11 +21,12 @@ supervised by `Pulsewatch.Monitoring.MonitorSupervisor`, a
 `DynamicSupervisor` with the default `:one_for_one` strategy. Each
 worker schedules its own next check with jitter, so a fleet started
 together (e.g. at boot) doesn't hit the network in lockstep. All
-decision-making (when to mark a monitor down, when to open/resolve an
-incident) lives in `Pulsewatch.Monitoring.Checker`, a plain, process-free
-module the worker calls into — the GenServer is a thin scheduling shell,
-not where the logic lives, which is what keeps `Checker`'s behavior
-unit-testable without a GenServer in the loop at all.
+decision-making (when to mark a monitor down, when to open or resolve
+an incident) lives in `Pulsewatch.Monitoring.Checker`, a plain,
+process-free module the worker calls into. The GenServer is a thin
+scheduling shell rather than where the logic lives, which is what keeps
+`Checker`'s behavior unit-testable without a GenServer in the loop at
+all.
 
 ## Consequences
 
@@ -34,10 +35,9 @@ unit-testable without a GenServer in the loop at all.
   the supervisor restarts it in isolation; every other monitor's worker
   is untouched and keeps checking on schedule. This is the main reason
   this shape was chosen over a central scheduler: a central process
-  doing all N monitors' work has no equivalent fault boundary — a crash
-  there risks every monitor at once, and even a caught, logged
-  exception in one iteration risks a stuck bug taking down the whole
-  loop's state.
+  doing all N monitors' work has no equivalent fault boundary. A crash
+  there risks every monitor at once, and even a caught, logged exception
+  in one iteration risks a stuck bug taking down the whole loop's state.
 - Supervision, not manual bookkeeping, gives start/stop/restart-by-id:
   `MonitorSupervisor.stop_worker/1` and `restart_worker/1` look the
   process up in the Registry by monitor id rather than requiring the
@@ -45,13 +45,13 @@ unit-testable without a GenServer in the loop at all.
 - The cost is N processes for N monitors, each holding its own small
   bit of state (the monitor struct, a consecutive-failure counter) and
   its own pending timer. For the scale this app targets (an individual
-  or small team's monitors — tens to low hundreds, not tens of
-  thousands), that's a non-issue on the BEAM; a scheduler design would
+  or small team's monitors, tens to low hundreds rather than tens of
+  thousands), that's a non-issue on the BEAM. A scheduler design would
   only start winning at a scale where per-process memory overhead
   actually matters, which would be a good problem to revisit this
   decision over.
-- Multi-node clustering (Phase 7) builds directly on this shape: because
+- Multi-node clustering (Phase 7) builds directly on this shape. Because
   ownership of a monitor is "does a MonitorWorker for this id exist,"
   cluster-wide exclusivity reduces to "does at most one node get to
-  start that worker" — see
+  start that worker." See
   [4. Multi-node duplicate-worker prevention](0004-multi-node-duplicate-prevention.md).

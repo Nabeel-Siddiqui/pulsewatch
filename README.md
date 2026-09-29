@@ -1,12 +1,13 @@
 # Pulsewatch
 
-A website uptime monitor: track a set of URLs, get alerted the moment
-one goes down, and get an AI-written, plain-English summary once it
-recovers — built end-to-end in Elixir/Phoenix/OTP as a portfolio project
-demonstrating production-grade backend and systems design, not just CRUD.
+A website uptime monitor. It tracks a set of URLs, alerts the moment
+one goes down, and writes a plain-English summary once it recovers,
+using an LLM. Built end-to-end in Elixir/Phoenix/OTP as a portfolio
+project demonstrating production-grade backend and systems design, not
+just CRUD.
 
 **[Live demo](#) · [Screenshot / demo GIF](#)**
-*(placeholders — fill in once deployed; see [fly.toml](fly.toml) and
+*(placeholders, to fill in once deployed; see [fly.toml](fly.toml) and
 [Phase 7 of this build](docs/decisions/) for the deploy path)*
 
 Log in with the seeded demo account (`demo@pulsewatch.dev` /
@@ -15,18 +16,18 @@ see it running against a few sample monitors immediately.
 
 ## What it does
 
-- Add a URL, pick a check interval (30s–1h) and expected status code —
-  Pulsewatch starts polling it immediately.
-- A monitor is marked **down** after 2 consecutive failed checks (not
-  the first — avoids paging on a single blip), which opens an
+- Add a URL, pick a check interval (30s–1h) and expected status code,
+  and Pulsewatch starts polling it immediately.
+- A monitor is marked **down** after 2 consecutive failed checks, not
+  the first (that avoids paging on a single blip), which opens an
   **incident**.
 - The moment an incident opens or resolves, its owner gets emailed and,
-  if configured, a webhook fires — with retries and backoff if the
+  if configured, a webhook fires, with retries and backoff if the
   receiving endpoint is briefly unavailable.
 - On resolve, an LLM turns the incident's raw check history into a
   short, readable summary ("down for 12 minutes, timing out on every
-  request, recovered without intervention") — generated in the
-  background, never something the app waits on or fails over if the
+  request, recovered without intervention"). It's generated in the
+  background and never something the app waits on or fails over if the
   AI provider is slow or unconfigured (see [ADR 5](docs/decisions/0005-ai-summaries-optional-non-blocking.md)).
 - A live-updating dashboard (current status, last response time, 24h
   uptime %) and a per-monitor detail page with a response-time chart
@@ -37,40 +38,41 @@ see it running against a few sample monitors immediately.
 
 ## Why Elixir for this, specifically
 
-An uptime monitor isn't a toy choice of domain for the BEAM — it's
-close to the shape of problem Erlang was built for: many independent,
+An uptime monitor isn't a toy choice of domain for the BEAM. It's close
+to the shape of problem Erlang was built for: many independent,
 long-lived, mostly-idle things that occasionally need to do work and
 occasionally fail, where one failing must never take down the rest.
 
 - **A process per monitor, supervised.** Every monitor gets its own
   `GenServer`, checking on its own schedule
   ([ADR 1](docs/decisions/0001-one-process-per-monitor.md)). If checking
-  one URL crashes — a malformed response, a bug, anything — OTP restarts
-  *only that process*. Every other monitor keeps checking on schedule,
-  completely unaffected. There's no shared loop, no shared state, no
-  single point where one bad monitor can wedge everyone else's checks.
-  That fault isolation is closer to free in Elixir than in almost
-  anything else; a thread-per-monitor design in most languages would
-  need a lot more explicit work to get the same guarantee.
+  one URL crashes, whether from a malformed response, a bug, or
+  anything else, OTP restarts *only that process*. Every other monitor
+  keeps checking on schedule, completely unaffected. There's no shared
+  loop, no shared state, no single point where one bad monitor can wedge
+  everyone else's checks. That fault isolation is closer to free in
+  Elixir than in almost anything else; a thread-per-monitor design in
+  most languages would need a lot more explicit work to get the same
+  guarantee.
 - **Let it crash, on purpose.** `MonitorWorker` doesn't defensively
-  catch every possible failure from a check — it trusts the supervisor
-  to restart it if something truly unexpected happens, and puts the
-  actual defensive logic (what counts as "down," when to open an
-  incident) in a plain, pure module (`Checker`) that's fully unit-tested
-  without any process in the loop at all.
+  catch every possible failure from a check. It trusts the supervisor to
+  restart it if something truly unexpected happens, and puts the actual
+  defensive logic (what counts as "down," when to open an incident) in a
+  plain, pure module (`Checker`) that's fully unit-tested without any
+  process in the loop at all.
 - **The database, not the language, is the source of truth for
-  correctness.** OTP gives you fast, cheap, isolated processes — it
+  correctness.** OTP gives you fast, cheap, isolated processes, but it
   doesn't give you cross-process atomicity for free. Where two things
-  must happen together or not at all (recording an incident and
-  queuing its alert job) or must never both be true (two open incidents
-  for one monitor), this app leans on Postgres — `Ecto.Multi` and a
-  partial unique index, respectively — rather than trying to coordinate
-  it purely in-process ([ADR 2](docs/decisions/0002-oban-vs-tasks.md),
+  must happen together or not at all (recording an incident and queuing
+  its alert job), or must never both be true (two open incidents for
+  one monitor), this app leans on Postgres: `Ecto.Multi` and a partial
+  unique index, respectively, rather than trying to coordinate it purely
+  in-process ([ADR 2](docs/decisions/0002-oban-vs-tasks.md),
   [ADR 3](docs/decisions/0003-db-constraint-open-incidents.md)).
 - **Clustering is a library, not a rewrite.** Scaling to multiple nodes
   is `dns_cluster` plus one small addition (`NodeLock`) to stop every
-  node from redundantly running every monitor — not a different
-  architecture ([ADR 4](docs/decisions/0004-multi-node-duplicate-prevention.md)).
+  node from redundantly running every monitor. It didn't require a
+  different architecture ([ADR 4](docs/decisions/0004-multi-node-duplicate-prevention.md)).
 
 ## Architecture: the supervision tree
 
@@ -99,7 +101,7 @@ graph TD
 ```
 
 A crash in any single `MonitorWorker` is contained by `MonitorSupervisor`
-and restarts in isolation — every sibling worker, and everything else in
+and restarts in isolation. Every sibling worker, and everything else in
 the tree, is unaffected. See
 [ADR 1](docs/decisions/0001-one-process-per-monitor.md) for why this
 shape was chosen over a single central scheduler.
@@ -126,7 +128,7 @@ mix phx.server
 ```
 
 Visit `http://localhost:4000` and log in with `demo@pulsewatch.dev` /
-`demo-password-please-change` — three sample monitors are already there
+`demo-password-please-change`. Three sample monitors are already there
 and being checked. No API keys are required: AI summaries run in demo
 mode automatically until `ANTHROPIC_API_KEY` is set (see
 [ADR 5](docs/decisions/0005-ai-summaries-optional-non-blocking.md)).
@@ -142,9 +144,9 @@ mix dialyzer
 ## Deploying
 
 `Dockerfile` (multi-stage, `mix release`-based) and `fly.toml` are
-included. `fly.toml` is a template — `fly launch` and `fly secrets set
+included. `fly.toml` is a template: `fly launch` and `fly secrets set
 DATABASE_URL SECRET_KEY_BASE` (and optionally `ANTHROPIC_API_KEY`) are
-still required before `fly deploy` will work; see the comments in
+still required before `fly deploy` will work. See the comments in
 `fly.toml` for what each setting does, including how multi-node
 clustering is wired up via `DNS_CLUSTER_QUERY`.
 
@@ -171,7 +173,7 @@ feature, no test ever calls a real LLM).
 
 - **Rebalancing for multi-node.** The current advisory-lock scheme
   ([ADR 4](docs/decisions/0004-multi-node-duplicate-prevention.md)) is
-  static — a monitor stays on whichever node first claimed it, even if
+  static: a monitor stays on whichever node first claimed it, even if
   that node becomes overloaded. Worth revisiting (Horde, or a simple
   periodic rebalancing pass) if this ever needed to run at a scale where
   load distribution actually mattered.
@@ -181,9 +183,9 @@ feature, no test ever calls a real LLM).
   dashboard show a real long-term reliability trend instead of losing
   that history entirely.
 - **Status pages.** A public, shareable page per monitor (or per user)
-  showing current status and recent incident history — the natural
-  next feature once alerting and history already exist.
-- **More check types.** Currently HTTP GET + status code only; TCP port
+  showing current status and recent incident history. The natural next
+  feature once alerting and history already exist.
+- **More check types.** Currently HTTP GET + status code only. TCP port
   checks and response-body assertions (not just status code) are the
   obvious next checks to add, and the `HttpClient` behaviour already
   used for the HTTP case is the right seam to add new checker types

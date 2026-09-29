@@ -80,9 +80,8 @@ defmodule Pulsewatch.Monitoring.Checker do
         end
 
       {:error, reason} ->
-        # Still record how long we waited before failing — a timeout that
-        # took ~timeout_ms is different information from an instant
-        # connection refusal, and Phase 5's AI summary wants that signal.
+        # A timeout near timeout_ms and an instant connection refusal are
+        # different signals worth keeping, so record elapsed time here too.
         elapsed = System.monotonic_time(:millisecond) - started_at
         {:down, elapsed, nil, format_error(reason)}
     end

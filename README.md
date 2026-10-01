@@ -1,18 +1,16 @@
 # Pulsewatch
 
-A website uptime monitor. It tracks a set of URLs, alerts the moment
-one goes down, and writes a plain-English summary once it recovers,
-using an LLM. Built end-to-end in Elixir/Phoenix/OTP as a portfolio
-project demonstrating production-grade backend and systems design, not
-just CRUD.
+A website uptime monitor: it checks a set of URLs on a schedule, alerts
+the moment one goes down, and writes a plain-English summary once it
+recovers. Built for engineering hiring managers evaluating backend and
+systems-design skills, not just CRUD.
 
-**[Live demo](#) · [Screenshot / demo GIF](#)**
-*(placeholders, to fill in once deployed; see [fly.toml](fly.toml) and
-[Phase 7 of this build](docs/decisions/) for the deploy path)*
+[![CI](https://github.com/Nabeel-Siddiqui/pulsewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/Nabeel-Siddiqui/pulsewatch/actions)
 
-Log in with the seeded demo account (`demo@pulsewatch.dev` /
-`demo-password-please-change`, created automatically by `mix setup`) to
-see it running against a few sample monitors immediately.
+**Runs locally in under 5 minutes** with seeded demo data. See
+[Running it locally](#running-it-locally).
+
+![Demo of Pulsewatch: a monitor flipping from Pending to Down and its incident appearing live in both the dashboard and the monitor's own detail page, with no page reload](docs/demo.gif)
 
 ## What it does
 
@@ -38,43 +36,39 @@ see it running against a few sample monitors immediately.
 
 ## Why Elixir for this, specifically
 
-An uptime monitor isn't a toy choice of domain for the BEAM. It's close
-to the shape of problem Erlang was built for: many independent,
-long-lived, mostly-idle things that occasionally need to do work and
-occasionally fail, where one failing must never take down the rest.
+An uptime monitor is close to the shape of problem Erlang was built
+for: many independent, long-lived, mostly-idle things that occasionally
+need to do work and occasionally fail, where one failing must never
+take down the rest. This app leans on that directly.
 
-- **A process per monitor, supervised.** Every monitor gets its own
-  `GenServer`, checking on its own schedule
-  ([ADR 1](docs/decisions/0001-one-process-per-monitor.md)). If checking
-  one URL crashes, whether from a malformed response, a bug, or
-  anything else, OTP restarts *only that process*. Every other monitor
-  keeps checking on schedule, completely unaffected. There's no shared
-  loop, no shared state, no single point where one bad monitor can wedge
-  everyone else's checks. That fault isolation is closer to free in
-  Elixir than in almost anything else; a thread-per-monitor design in
-  most languages would need a lot more explicit work to get the same
-  guarantee.
-- **Let it crash, on purpose.** `MonitorWorker` doesn't defensively
-  catch every possible failure from a check. It trusts the supervisor to
-  restart it if something truly unexpected happens, and puts the actual
-  defensive logic (what counts as "down," when to open an incident) in a
-  plain, pure module (`Checker`) that's fully unit-tested without any
-  process in the loop at all.
+- **A process per monitor, supervised, that's allowed to crash.** Every
+  monitor gets its own `GenServer`, checking on its own schedule. If
+  checking one URL crashes, OTP restarts *only that process* — every
+  other monitor keeps checking on schedule, unaffected. `MonitorWorker`
+  doesn't defensively catch every possible failure; it trusts the
+  supervisor, and puts the actual defensive logic (what counts as
+  "down," when to open an incident) in a plain, pure module (`Checker`)
+  that's fully unit-tested without any process in the loop.
+  [ADR 1](docs/decisions/0001-one-process-per-monitor.md)
 - **The database, not the language, is the source of truth for
-  correctness.** OTP gives you fast, cheap, isolated processes, but it
-  doesn't give you cross-process atomicity for free. Where two things
-  must happen together or not at all (recording an incident and queuing
-  its alert job), or must never both be true (two open incidents for
-  one monitor), this app leans on Postgres: `Ecto.Multi` and a partial
-  unique index, respectively, rather than trying to coordinate it purely
-  in-process ([ADR 2](docs/decisions/0002-oban-vs-tasks.md),
-  [ADR 3](docs/decisions/0003-db-constraint-open-incidents.md)).
+  correctness.** OTP gives fast, isolated processes, but not
+  cross-process atomicity for free. Where two things must happen
+  together (recording an incident and queuing its alert job) or must
+  never both be true (two open incidents for one monitor), this app
+  leans on Postgres — `Ecto.Multi` and a partial unique index,
+  respectively — rather than coordinating it purely in-process.
+  [ADR 2](docs/decisions/0002-oban-vs-tasks.md) ·
+  [ADR 3](docs/decisions/0003-db-constraint-open-incidents.md)
 - **Clustering is a library, not a rewrite.** Scaling to multiple nodes
-  is `dns_cluster` plus one small addition (`NodeLock`) to stop every
-  node from redundantly running every monitor. It didn't require a
-  different architecture ([ADR 4](docs/decisions/0004-multi-node-duplicate-prevention.md)).
+  is `dns_cluster` plus one small addition (`NodeLock`, built on
+  Postgres advisory locks) to stop every node from redundantly running
+  every monitor. It didn't require a different architecture.
+  [ADR 4](docs/decisions/0004-multi-node-duplicate-prevention.md)
 
-## Architecture: the supervision tree
+## Architecture
+
+Pulsewatch runs as one OTP supervision tree, with a dedicated process
+per monitored URL:
 
 ```mermaid
 graph TD
@@ -101,7 +95,7 @@ graph TD
 ```
 
 A crash in any single `MonitorWorker` is contained by `MonitorSupervisor`
-and restarts in isolation. Every sibling worker, and everything else in
+and restarts in isolation — every sibling worker, and everything else in
 the tree, is unaffected. See
 [ADR 1](docs/decisions/0001-one-process-per-monitor.md) for why this
 shape was chosen over a single central scheduler.
@@ -113,12 +107,12 @@ Req (HTTP, behind a behaviour + Mox everywhere it's used) · Swoosh
 (email) · Anthropic API for AI summaries (with a canned-response demo
 mode when no key is configured) · Hammer (rate limiting) ·
 open_api_spex (OpenAPI/Swagger) · Credo (`--strict`) + Dialyzer +
-ExCoveralls in CI · GitHub Actions · Docker (`mix release`) · Fly.io.
+ExCoveralls in CI · GitHub Actions · Docker (`mix release`).
 
-## Running it locally (under 5 minutes)
+## Running it locally
 
-Prerequisites: Elixir 1.20+ / OTP 29 (see [`Dockerfile`](Dockerfile) for
-the exact versions this was built against) and a local Postgres.
+Prerequisites: Elixir 1.20.3 / OTP 29.0.5 (see [`Dockerfile`](Dockerfile)
+— any recent Elixir/OTP pair should work fine too) and a local Postgres.
 
 ```bash
 git clone <this-repo-url>
@@ -140,15 +134,6 @@ mix test                # 258 tests, no real network/LLM calls anywhere
 mix credo --strict
 mix dialyzer
 ```
-
-## Deploying
-
-`Dockerfile` (multi-stage, `mix release`-based) and `fly.toml` are
-included. `fly.toml` is a template: `fly launch` and `fly secrets set
-DATABASE_URL SECRET_KEY_BASE` (and optionally `ANTHROPIC_API_KEY`) are
-still required before `fly deploy` will work. See the comments in
-`fly.toml` for what each setting does, including how multi-node
-clustering is wired up via `DNS_CLUSTER_QUERY`.
 
 ## Design decisions
 

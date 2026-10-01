@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# Records docs/demo.gif: the dashboard and a monitor's detail page, side
+# by side, watching the same monitor flip from Pending to Down and its
+# incident appear live in both windows — no reload either time.
+#
+# One-time setup:
+#   brew install ffmpeg                 # or your OS's equivalent
+#   cd scripts && npm install           # installs Playwright
+#   npx playwright install chromium     # downloads the browser binary
+#
+# Then, from the repo root, with a local Postgres running:
+#   scripts/record_demo
+#
+# Safe to rerun any time — it resets its own demo monitor to a fresh,
+# never-checked state on every run and leaves everything else (the
+# regular seeded user/monitors) untouched. It starts its own
+# `mix phx.server` on :4000 and stops it when done; stop anything
+# already listening on :4000 first or it'll fail to bind.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "==> Ensuring the dev database exists and is seeded"
+mix ecto.create >/dev/null
+mix ecto.migrate >/dev/null
+mix run priv/repo/seeds.exs >/dev/null
+
+echo "==> Resetting the demo monitor used for this recording"
+MONITOR_ID=$(mix run scripts/reset_demo_monitor.exs | grep -o '[0-9]*$')
+
+echo "==> Starting a fresh phx.server on :4000"
+mix phx.server >/tmp/pulsewatch_record_demo_server.log 2>&1 &
+SERVER_PID=$!
+trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+
+for _ in $(seq 1 30); do
+  curl -s -o /dev/null http://localhost:4000/ && break
+  sleep 1
+done
+
+echo "==> Recording with Playwright (monitor id $MONITOR_ID)"
+cd scripts
+DEMO_MONITOR_ID="$MONITOR_ID" npm exec --yes -- node record_demo.mjs
+cd ..
+
+echo "==> Converting to docs/demo.gif"
+REC=scripts/tmp_demo_recording
+PALETTE=$(mktemp -t pulsewatch_palette).png
+
+# Side by side: phone on the left (narrower), dashboard on the right,
+# matched to the shorter clip's duration, then palette-quantized for a
+# much smaller/cleaner GIF than ffmpeg's default dithering.
+# Scale both clips to the same height before stacking — hstack requires
+# matching heights, and the two recordings have different aspect ratios
+# (phone-sized vs. desktop-sized viewports).
+STACK="[0:v]scale=-1:480[p];[1:v]scale=-1:480[d];[p][d]hstack=inputs=2,fps=12,scale=800:-1:flags=lanczos"
+
+ffmpeg -y -i "$REC/phone.webm" -i "$REC/desktop.webm" \
+  -filter_complex "${STACK},palettegen" \
+  "$PALETTE"
+
+ffmpeg -y -i "$REC/phone.webm" -i "$REC/desktop.webm" -i "$PALETTE" \
+  -filter_complex "${STACK}[x];[x][2:v]paletteuse" \
+  docs/demo.gif
+
+rm -f "$PALETTE"
+rm -rf "$REC"
+
+echo "==> Done: docs/demo.gif ($(du -h docs/demo.gif | cut -f1))"

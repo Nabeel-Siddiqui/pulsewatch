@@ -66,7 +66,6 @@ defmodule Pulsewatch.Ai.IncidentSummaryWorker do
     end)
   end
 
-  defp llm_client do
-    Application.get_env(:pulsewatch, :llm_client, Pulsewatch.Ai.LlmClient.AnthropicClient)
-  end
+  defp llm_client,
+    do: Pulsewatch.Config.impl(:llm_client, Pulsewatch.Ai.LlmClient.AnthropicClient)
 end

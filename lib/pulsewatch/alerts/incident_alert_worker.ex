@@ -100,7 +100,6 @@ defmodule Pulsewatch.Alerts.IncidentAlertWorker do
     )
   end
 
-  defp webhook_client do
-    Application.get_env(:pulsewatch, :webhook_client, Pulsewatch.Alerts.WebhookClient.ReqClient)
-  end
+  defp webhook_client,
+    do: Pulsewatch.Config.impl(:webhook_client, Pulsewatch.Alerts.WebhookClient.ReqClient)
 end

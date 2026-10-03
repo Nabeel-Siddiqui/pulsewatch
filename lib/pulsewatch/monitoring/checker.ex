@@ -136,7 +136,6 @@ defmodule Pulsewatch.Monitoring.Checker do
 
   defp apply_transition(_monitor, :no_change), do: :ok
 
-  defp http_client do
-    Application.get_env(:pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClient.ReqClient)
-  end
+  defp http_client,
+    do: Pulsewatch.Config.impl(:http_client, Pulsewatch.Monitoring.HttpClient.ReqClient)
 end

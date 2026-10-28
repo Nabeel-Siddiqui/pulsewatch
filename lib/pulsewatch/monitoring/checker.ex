@@ -66,26 +66,43 @@ defmodule Pulsewatch.Monitoring.Checker do
     %{check: check, consecutive_failures: new_failures, transition: transition}
   end
 
-  defp perform_request(monitor) do
+  defp perform_request(%Monitor{check_type: :http} = monitor) do
+    {result, elapsed} = measure(fn -> http_client().get(monitor.url, monitor.timeout_ms) end)
+    interpret_http(result, elapsed, monitor.expected_status_code)
+  end
+
+  defp perform_request(%Monitor{check_type: :tcp} = monitor) do
+    {result, elapsed} =
+      measure(fn -> tcp_client().connect(monitor.host, monitor.port, monitor.timeout_ms) end)
+
+    interpret_tcp(result, elapsed)
+  end
+
+  defp measure(fun) do
     started_at = System.monotonic_time(:millisecond)
+    result = fun.()
+    {result, System.monotonic_time(:millisecond) - started_at}
+  end
 
-    case http_client().get(monitor.url, monitor.timeout_ms) do
-      {:ok, status_code} ->
-        elapsed = System.monotonic_time(:millisecond) - started_at
-
-        if status_code == monitor.expected_status_code do
-          {:up, elapsed, status_code, nil}
-        else
-          {:down, elapsed, status_code, "unexpected status #{status_code}"}
-        end
-
-      {:error, reason} ->
-        # A timeout near timeout_ms and an instant connection refusal are
-        # different signals worth keeping, so record elapsed time here too.
-        elapsed = System.monotonic_time(:millisecond) - started_at
-        {:down, elapsed, nil, format_error(reason)}
+  defp interpret_http({:ok, status_code}, elapsed, expected_status_code) do
+    if status_code == expected_status_code do
+      {:up, elapsed, status_code, nil}
+    else
+      {:down, elapsed, status_code, "unexpected status #{status_code}"}
     end
   end
+
+  # A timeout near timeout_ms and an instant connection refusal are
+  # different signals worth keeping, so elapsed time is recorded here
+  # too, not just on the success path.
+  defp interpret_http({:error, reason}, elapsed, _expected_status_code) do
+    {:down, elapsed, nil, format_error(reason)}
+  end
+
+  # No status code or response body for a TCP check — a successful
+  # connect is the entire signal.
+  defp interpret_tcp(:ok, elapsed), do: {:up, elapsed, nil, nil}
+  defp interpret_tcp({:error, reason}, elapsed), do: {:down, elapsed, nil, format_error(reason)}
 
   defp format_error(reason) when is_exception(reason), do: Exception.message(reason)
   defp format_error(reason) when is_binary(reason), do: reason
@@ -138,4 +155,7 @@ defmodule Pulsewatch.Monitoring.Checker do
 
   defp http_client,
     do: Pulsewatch.Config.impl(:http_client, Pulsewatch.Monitoring.HttpClient.ReqClient)
+
+  defp tcp_client,
+    do: Pulsewatch.Config.impl(:tcp_client, Pulsewatch.Monitoring.TcpClient.GenTcpClient)
 end

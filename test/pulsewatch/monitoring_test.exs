@@ -63,6 +63,73 @@ defmodule Pulsewatch.MonitoringTest do
       end
     end
 
+    test "create_monitor/2 creates a tcp monitor, requiring host and port instead of url" do
+      user = user_fixture()
+
+      assert {:ok, %Monitor{} = monitor} =
+               Monitoring.create_monitor(user, %{
+                 name: "Database port",
+                 check_type: :tcp,
+                 host: "db.example.com",
+                 port: 5432
+               })
+
+      assert monitor.check_type == :tcp
+      assert monitor.host == "db.example.com"
+      assert monitor.port == 5432
+    end
+
+    test "create_monitor/2 rejects a tcp monitor missing host or port" do
+      user = user_fixture()
+
+      assert {:error, changeset} =
+               Monitoring.create_monitor(user, %{name: "No target", check_type: :tcp})
+
+      errors = errors_on(changeset)
+      assert "can't be blank" in errors.host
+      assert "can't be blank" in errors.port
+    end
+
+    test "create_monitor/2 rejects a tcp monitor's host being a full URL" do
+      user = user_fixture()
+
+      assert {:error, changeset} =
+               Monitoring.create_monitor(user, %{
+                 name: "Bad host",
+                 check_type: :tcp,
+                 host: "https://db.example.com",
+                 port: 5432
+               })
+
+      assert "should be a bare hostname or IP, not a URL" in errors_on(changeset).host
+    end
+
+    test "create_monitor/2 rejects a tcp monitor's port outside 1..65535" do
+      user = user_fixture()
+
+      assert {:error, changeset} =
+               Monitoring.create_monitor(user, %{
+                 name: "Bad port",
+                 check_type: :tcp,
+                 host: "db.example.com",
+                 port: 70_000
+               })
+
+      assert %{port: [_]} = errors_on(changeset)
+    end
+
+    test "create_monitor/2 does not require a url for a tcp monitor" do
+      user = user_fixture()
+
+      assert {:ok, _monitor} =
+               Monitoring.create_monitor(user, %{
+                 name: "No url needed",
+                 check_type: :tcp,
+                 host: "db.example.com",
+                 port: 5432
+               })
+    end
+
     test "create_monitor/2 rejects a check_interval_seconds outside 30..3600" do
       user = user_fixture()
 
@@ -220,6 +287,20 @@ defmodule Pulsewatch.MonitoringTest do
       newer = incident_fixture(monitor)
 
       assert Monitoring.list_incidents(monitor) |> Enum.map(& &1.id) == [newer.id, older.id]
+    end
+  end
+
+  describe "Monitor.target/1" do
+    test "is the url for an http monitor" do
+      monitor = monitor_fixture(%{url: "https://example.com/health"})
+      assert Monitor.target(monitor) == "https://example.com/health"
+    end
+
+    test "is host:port for a tcp monitor" do
+      monitor =
+        monitor_fixture(%{check_type: :tcp, host: "db.example.com", port: 5432, url: nil})
+
+      assert Monitor.target(monitor) == "db.example.com:5432"
     end
   end
 end

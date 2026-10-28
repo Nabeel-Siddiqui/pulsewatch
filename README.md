@@ -15,7 +15,10 @@ systems-design skills, not just CRUD.
 ## What it does
 
 - Add a URL, pick a check interval (30s–1h) and expected status code,
-  and Pulsewatch starts polling it immediately.
+  and Pulsewatch starts polling it immediately. Or check a raw TCP
+  port (a database, an SSH daemon, anything that isn't HTTP) by host
+  and port instead of a URL — same scheduling, same incidents, same
+  dashboard.
 - A monitor is marked **down** after 2 consecutive failed checks, not
   the first (that avoids paging on a single blip), which opens an
   **incident**.
@@ -64,6 +67,12 @@ take down the rest. This app leans on that directly.
   Postgres advisory locks) to stop every node from redundantly running
   every monitor. It didn't require a different architecture.
   [ADR 4](docs/decisions/0004-multi-node-duplicate-prevention.md)
+- **A new check type is a behaviour and a dispatch clause, not a new
+  worker.** TCP port checks share every piece of `Checker`/
+  `MonitorWorker` that isn't specific to *how* a check is performed —
+  only `perform_request/1` branches, behind the same
+  behaviour-plus-`Mox` seam `HttpClient` already used.
+  [ADR 7](docs/decisions/0007-tcp-checks-share-the-behaviour-seam.md)
 
 ## Architecture
 
@@ -130,7 +139,7 @@ mode automatically until `ANTHROPIC_API_KEY` is set (see
 To verify the whole thing end to end:
 
 ```bash
-mix test                # 258 tests, no real network/LLM calls anywhere
+mix test                # 273 tests, no real network/LLM calls anywhere
 mix credo --strict
 mix dialyzer
 ```
@@ -147,6 +156,7 @@ considered and why it lost:
 4. [Postgres advisory locks over Horde for multi-node](docs/decisions/0004-multi-node-duplicate-prevention.md)
 5. [AI summaries are optional and non-blocking](docs/decisions/0005-ai-summaries-optional-non-blocking.md)
 6. [30-day check retention](docs/decisions/0006-data-retention.md)
+7. [TCP checks reuse the HTTP checker's behaviour seam](docs/decisions/0007-tcp-checks-share-the-behaviour-seam.md)
 
 `CLAUDE.md` in the repo root has the conventions every phase of this
 build held to (contexts own all business logic, the web layer never
@@ -170,11 +180,11 @@ feature, no test ever calls a real LLM).
 - **Status pages.** A public, shareable page per monitor (or per user)
   showing current status and recent incident history. The natural next
   feature once alerting and history already exist.
-- **More check types.** Currently HTTP GET + status code only. TCP port
-  checks and response-body assertions (not just status code) are the
-  obvious next checks to add, and the `HttpClient` behaviour already
-  used for the HTTP case is the right seam to add new checker types
-  behind.
+- **TCP response-body assertions.** A TCP check currently only confirms
+  the port accepts a connection. Reading the first bytes a service
+  sends back (a Redis `PONG`, an SMTP banner) and matching them against
+  an expected pattern would catch "listening but broken" the way the
+  HTTP check's status-code match already does.
 - **Per-monitor alert routing.** Right now every alert goes to the
   monitor's owner by email, plus an optional webhook. Slack/PagerDuty
   integrations and per-monitor (not just per-account) notification

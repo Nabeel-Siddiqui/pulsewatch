@@ -35,6 +35,27 @@ defmodule PulsewatchWeb.MonitorLive.ShowTest do
     assert html =~ format_time(incident.started_at)
   end
 
+  test "shows host:port instead of a url for a tcp monitor, with no expected-status item", %{
+    conn: conn,
+    user: user
+  } do
+    monitor =
+      monitor_fixture(%{
+        user: user,
+        name: "Database",
+        check_type: :tcp,
+        host: "db.example.com",
+        port: 5432,
+        url: nil
+      })
+
+    {:ok, _view, html} = live(conn, ~p"/monitors/#{monitor}")
+
+    assert html =~ "db.example.com:5432"
+    assert html =~ "TCP port"
+    refute html =~ "Expected status"
+  end
+
   test "a monitor a different user owns renders a 404-style not-found", %{conn: conn} do
     other = monitor_fixture()
 

@@ -2,7 +2,7 @@ defmodule PulsewatchWeb.MonitorLive.Show do
   use PulsewatchWeb, :live_view
 
   alias Pulsewatch.Monitoring
-  alias Pulsewatch.Monitoring.Engine
+  alias Pulsewatch.Monitoring.{Engine, Monitor}
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -40,7 +40,7 @@ defmodule PulsewatchWeb.MonitorLive.Show do
     ~H"""
     <.header>
       {@monitor.name}
-      <:subtitle>{@monitor.url}</:subtitle>
+      <:subtitle>{Monitor.target(@monitor)}</:subtitle>
       <:actions>
         <.link patch={~p"/monitors/#{@monitor}/show/edit"}>
           <.button>Edit</.button>
@@ -60,8 +60,11 @@ defmodule PulsewatchWeb.MonitorLive.Show do
 
     <.list>
       <:item title="Status">{(@monitor.active && "Active") || "Paused"}</:item>
+      <:item title="Check type">{(@monitor.check_type == :tcp && "TCP port") || "HTTP"}</:item>
       <:item title="Check interval">{@monitor.check_interval_seconds}s</:item>
-      <:item title="Expected status">{@monitor.expected_status_code}</:item>
+      <:item :if={@monitor.check_type == :http} title="Expected status">
+        {@monitor.expected_status_code}
+      </:item>
       <:item title="Timeout">{@monitor.timeout_ms}ms</:item>
       <:item title="Webhook">{@monitor.webhook_url || "—"}</:item>
     </.list>

@@ -52,7 +52,7 @@ defmodule PulsewatchWeb.DashboardLive do
           {row.monitor.name}
         </.link>
       </:col>
-      <:col :let={row} label="URL">{row.monitor.url}</:col>
+      <:col :let={row} label="Target">{Monitor.target(row.monitor)}</:col>
       <:col :let={row} label="Status">
         <span class={status_class(row.status, row.monitor.active)}>
           {status_label(row.status, row.monitor.active)}

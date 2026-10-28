@@ -41,6 +41,13 @@ sample_monitors = [
     name: "Status page",
     url: "https://status.example.com",
     check_interval_seconds: 300
+  },
+  %{
+    name: "Example.com HTTPS port",
+    check_type: :tcp,
+    host: "example.com",
+    port: 443,
+    check_interval_seconds: 300
   }
 ]
 

@@ -15,7 +15,10 @@ defmodule PulsewatchWeb.Api.V1.MonitorJSON do
     %{
       id: monitor.id,
       name: monitor.name,
+      check_type: monitor.check_type,
       url: monitor.url,
+      host: monitor.host,
+      port: monitor.port,
       check_interval_seconds: monitor.check_interval_seconds,
       expected_status_code: monitor.expected_status_code,
       timeout_ms: monitor.timeout_ms,

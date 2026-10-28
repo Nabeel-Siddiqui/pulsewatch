@@ -73,6 +73,52 @@ defmodule PulsewatchWeb.DashboardLiveTest do
       assert html =~ "Example"
     end
 
+    test "the form switches between url and host/port fields by check type", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/monitors")
+
+      view |> element("a", "New monitor") |> render_click()
+      assert_patch(view, ~p"/monitors/new")
+
+      html = view |> form("#monitor-form", monitor: %{check_type: "tcp"}) |> render_change()
+      assert html =~ "Host"
+      assert html =~ "Port"
+      refute html =~ "Expected status code"
+
+      html = view |> form("#monitor-form", monitor: %{check_type: "http"}) |> render_change()
+      assert html =~ "Expected status code"
+      refute html =~ "placeholder=\"example.com\""
+    end
+
+    test "creates a tcp monitor through the modal form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/monitors")
+
+      view |> element("a", "New monitor") |> render_click()
+      assert_patch(view, ~p"/monitors/new")
+
+      # The host/port inputs only exist in the rendered form once
+      # check_type has actually flipped to "tcp" server-side — this
+      # change has to land before a submit can fill them in.
+      view |> form("#monitor-form", monitor: %{check_type: "tcp"}) |> render_change()
+
+      assert view
+             |> form("#monitor-form",
+               monitor: %{
+                 name: "Database",
+                 check_type: "tcp",
+                 host: "db.example.com",
+                 port: "5432",
+                 check_interval_seconds: "60",
+                 timeout_ms: "5000"
+               }
+             )
+             |> render_submit()
+
+      assert_patch(view, ~p"/monitors")
+      html = render(view)
+      assert html =~ "Monitor created"
+      assert html =~ "db.example.com:5432"
+    end
+
     test "edits a monitor through the modal form", %{conn: conn, user: user} do
       monitor = monitor_fixture(%{user: user, name: "Original"})
       {:ok, view, _html} = live(conn, ~p"/monitors")

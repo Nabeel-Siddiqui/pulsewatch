@@ -10,7 +10,7 @@ defmodule PulsewatchWeb.MonitorLive.FormComponent do
     <div>
       <.header>
         {@title}
-        <:subtitle>A check runs every 30-3600 seconds against the URL below.</:subtitle>
+        <:subtitle>A check runs every 30-3600 seconds against the target below.</:subtitle>
       </.header>
 
       <.simple_form
@@ -21,9 +21,20 @@ defmodule PulsewatchWeb.MonitorLive.FormComponent do
         phx-submit="save"
       >
         <.input field={@form[:name]} type="text" label="Name" />
-        <.input field={@form[:url]} type="text" label="URL" placeholder="https://example.com" />
+        <.input
+          field={@form[:check_type]}
+          type="select"
+          label="Check type"
+          options={[{"HTTP", "http"}, {"TCP port", "tcp"}]}
+        />
+        <%= if @form[:check_type].value in [:tcp, "tcp"] do %>
+          <.input field={@form[:host]} type="text" label="Host" placeholder="example.com" />
+          <.input field={@form[:port]} type="number" label="Port" placeholder="443" />
+        <% else %>
+          <.input field={@form[:url]} type="text" label="URL" placeholder="https://example.com" />
+          <.input field={@form[:expected_status_code]} type="number" label="Expected status code" />
+        <% end %>
         <.input field={@form[:check_interval_seconds]} type="number" label="Check interval (seconds)" />
-        <.input field={@form[:expected_status_code]} type="number" label="Expected status code" />
         <.input field={@form[:timeout_ms]} type="number" label="Timeout (ms)" />
         <.input
           field={@form[:webhook_url]}

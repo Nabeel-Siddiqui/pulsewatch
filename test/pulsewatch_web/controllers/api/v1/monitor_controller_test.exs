@@ -59,8 +59,31 @@ defmodule PulsewatchWeb.Api.V1.MonitorControllerTest do
       monitor = monitor_fixture(%{user: user, name: "Example"})
       conn = get(conn, ~p"/api/v1/monitors/#{monitor.id}")
 
-      assert %{"id" => id, "name" => "Example", "url" => _} = json_response(conn, 200)["data"]
+      assert %{"id" => id, "name" => "Example", "check_type" => "http", "url" => _} =
+               json_response(conn, 200)["data"]
+
       assert id == monitor.id
+    end
+
+    test "returns host/port instead of a url for a tcp monitor", %{conn: conn, user: user} do
+      monitor =
+        monitor_fixture(%{
+          user: user,
+          name: "Database",
+          check_type: :tcp,
+          host: "db.example.com",
+          port: 5432,
+          url: nil
+        })
+
+      conn = get(conn, ~p"/api/v1/monitors/#{monitor.id}")
+
+      assert %{
+               "check_type" => "tcp",
+               "host" => "db.example.com",
+               "port" => 5432,
+               "url" => nil
+             } = json_response(conn, 200)["data"]
     end
 
     test "404s for another user's monitor — not 403, so existence isn't leaked", %{conn: conn} do

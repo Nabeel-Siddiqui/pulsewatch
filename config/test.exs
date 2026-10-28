@@ -43,6 +43,10 @@ config :phoenix_live_view,
 # the suite ever makes a real network call for a monitor check.
 config :pulsewatch, :http_client, Pulsewatch.Monitoring.HttpClientMock
 
+# Same story for TCP port checks — nothing in the suite ever opens a
+# real socket either.
+config :pulsewatch, :tcp_client, Pulsewatch.Monitoring.TcpClientMock
+
 # Same story for the alert worker's webhook client.
 config :pulsewatch, :webhook_client, Pulsewatch.Alerts.WebhookClientMock
 

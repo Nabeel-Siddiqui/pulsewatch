@@ -13,7 +13,10 @@ defmodule PulsewatchWeb.Schemas do
       properties: %{
         id: %Schema{type: :integer},
         name: %Schema{type: :string},
-        url: %Schema{type: :string, format: :uri},
+        check_type: %Schema{type: :string, enum: ["http", "tcp"]},
+        url: %Schema{type: :string, format: :uri, nullable: true},
+        host: %Schema{type: :string, nullable: true},
+        port: %Schema{type: :integer, nullable: true},
         check_interval_seconds: %Schema{type: :integer},
         expected_status_code: %Schema{type: :integer},
         timeout_ms: %Schema{type: :integer},
@@ -21,11 +24,14 @@ defmodule PulsewatchWeb.Schemas do
         webhook_url: %Schema{type: :string, nullable: true},
         inserted_at: %Schema{type: :string, format: :"date-time"}
       },
-      required: [:id, :name, :url, :active],
+      required: [:id, :name, :check_type, :active],
       example: %{
         "id" => 1,
         "name" => "Marketing site",
+        "check_type" => "http",
         "url" => "https://example.com",
+        "host" => nil,
+        "port" => nil,
         "check_interval_seconds" => 60,
         "expected_status_code" => 200,
         "timeout_ms" => 5000,
